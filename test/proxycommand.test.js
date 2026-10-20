@@ -7,6 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { homedir } from 'node:os'
 import { expandProxyCommand, proxyShell, spawnProxyCommand } from '../lib/proxycommand.js'
 
 test('expandProxyCommand: %h/%n/%p/%r tokens, and %% as a literal percent', () => {
@@ -16,6 +17,23 @@ test('expandProxyCommand: %h/%n/%p/%r tokens, and %% as a literal percent', () =
     host: 'HOST', originalHost: 'alias', user: 'me', localHost: 'LOCAL',
   })
   assert.equal(all, 'a alias b me c LOCAL d 100%')
+})
+
+test('expandProxyCommand: %n is the alias the user typed, %h the resolved HostName', () => {
+  const out = expandProxyCommand('dig %n; cloudflared --hostname %h', {
+    host: 's4.headwindx.top', originalHost: 's4',
+  })
+  assert.equal(out, 'dig s4; cloudflared --hostname s4.headwindx.top')
+  // A machine with literal values has no alias: %n falls back to %h.
+  assert.equal(expandProxyCommand('%n', { host: '10.0.0.1' }), '10.0.0.1')
+})
+
+test('expandProxyCommand: local user/home/uid tokens come from this machine', () => {
+  const out = expandProxyCommand('%l|%u|%i|%d', { host: 'h' })
+  const [l, u, i, d] = out.split('|')
+  assert.equal(l, u, '%l and %u are both the local user')
+  if (process.platform !== 'win32') assert.match(i, /^\d+$/)
+  assert.equal(d, homedir())
 })
 
 test('expandProxyCommand: empty and "none" mean no proxy', () => {
