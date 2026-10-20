@@ -138,6 +138,27 @@ test('sshAliasTarget: ProxyCommand is reported, never executed', () => {
   assert.match(target.warnings.join(' '), /ProxyCommand/)
 })
 
+test('sshAliasTarget: the openssh backend is NOT warned about ProxyCommand (ssh runs it)', () => {
+  const text = ['Host t', '  HostName 10.9.9.9', '  ProxyCommand nc -X connect %h %p'].join(LF)
+  const target = sshAliasTarget('t', { text, backend: 'openssh' })
+  assert.deepEqual(target.warnings, [])
+  assert.equal(target.proxy, undefined, 'ssh resolves the proxy, the plugin must not invent a jump host')
+})
+
+test('sshAliasTarget: multi-hop ProxyJump is silent on the openssh backend, loud on native', () => {
+  const text = ['Host t', '  HostName 10.9.9.9', '  ProxyJump a,b'].join(LF)
+  assert.deepEqual(sshAliasTarget('t', { text, backend: 'openssh' }).warnings, [])
+  assert.match(sshAliasTarget('t', { text, backend: 'native' }).warnings.join(' '), /2 hops/)
+})
+
+test('resolveMachineSshConfig: machine.backend decides whether ProxyCommand is a warning', () => {
+  const text = ['Host s4', '  HostName s4.example.com', '  ProxyCommand /bin/sh -c "exec nc %h %p"'].join(LF)
+  const openssh = resolveMachineSshConfig({ host: 's4', useSshConfig: true, backend: 'openssh' }, { text })
+  assert.deepEqual(openssh.warnings, [], 'openssh hands the alias to ssh, which runs the ProxyCommand')
+  const native = resolveMachineSshConfig({ host: 's4', useSshConfig: true, backend: 'native' }, { text })
+  assert.match(native.warnings.join(' '), /ProxyCommand/)
+})
+
 test('Include: relative paths resolve against ~/.ssh, globs expand, cycles stop', () => {
   // Home-agnostic io stubs: relative includes resolve against the REAL
   // homedir()/.ssh, so the fake filesystem matches on basenames.
