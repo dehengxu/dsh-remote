@@ -113,6 +113,21 @@ test('#51: an explicit jump host maps onto -J, and hostKeyMode onto StrictHostKe
   assert.deepEqual(hostKeyArgs({}), ['-o', 'StrictHostKeyChecking=accept-new'])
 })
 
+test('#51: an explicit proxy chain becomes one -J, a ProxyCommand becomes -o', () => {
+  const chained = baseSshArgs(baseConfig({
+    proxyChain: [
+      { host: 'a', port: 22, username: 'ua' },
+      { host: 'b', port: 2222, username: 'ub' },
+    ],
+  })).join(' ')
+  assert.ok(chained.includes('-J ua@a,ub@b:2222'), 'multi-hop must stay multi-hop')
+
+  const command = baseSshArgs(baseConfig({ proxyCommand: 'nc -X connect %h %p' })).join(' ')
+  assert.ok(command.includes('ProxyCommand=nc -X connect %h %p'))
+  // The command is one option value, so ssh (not a local shell we spawn) expands it.
+  assert.ok(!command.includes('-J'), 'ProxyCommand and -J must not be mixed')
+})
+
 test('#51: the ssh binary is configurable but defaults to PATH', () => {
   assert.equal(resolveSshBinary({}), 'ssh')
   assert.equal(resolveSshBinary({ sshBinary: '  /usr/bin/ssh  ' }), '/usr/bin/ssh')

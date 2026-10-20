@@ -234,7 +234,7 @@ scripts/dev-run.sh --status    # 是否在运行
 | `hostKeyMode` | string | `accept-new` | 主机指纹策略：`accept-new`（首次信任）、`verify`（拒绝未知主机）、`off`（跳过校验） |
 | `useAgent` | bool | `false` | 用 OpenSSH agent（`SSH_AUTH_SOCK`）认证 |
 | `keyboardInteractive` | bool | `false` | 允许 keyboard-interactive 认证（OTP/MFA）并复用配置的密码 |
-| `backend` | string | `native` | SSH 传输后端（issue #51）。`native`=内置 ssh2（密码/私钥/agent/动态码）；`openssh`=**调用本机 `ssh` 命令**，因此支持 GSSAPI/Kerberos（`kinit` 后免密）以及 `ProxyCommand`、`PKCS11Provider`、`Match` 等 OpenSSH 专有特性。**可按机器单独设置**。代价：每条命令新建一次连接（比 native 慢）；SFTP 仍复用单条长连接。主机名会被**原样**交给 ssh（`~/.ssh/config` 是配置唯一来源），主机密钥也由 ssh 用你自己的 `known_hosts` 校验 |
+| `backend` | string | `native` | SSH 传输后端（issue #51）。`native`=内置 ssh2（密码/私钥/agent/动态码），并**自己实现 `ProxyJump`（含多跳链）与 `ProxyCommand`**（本地命令管道，见 `lib/proxycommand.js`）；`openssh`=**调用本机 `ssh` 命令**，适用于 GSSAPI/Kerberos（`kinit` 后免密）、`PKCS11Provider`、`Match` 等必须由 OpenSSH 处理的特性。**可按机器单独设置**。代价：每条命令新建一次连接（比 native 慢）；SFTP 仍复用单条长连接。主机名会被**原样**交给 ssh（`~/.ssh/config` 是配置唯一来源），主机密钥也由 ssh 用你自己的 `known_hosts` 校验 |
 | `sshBinary` | string | `''` | `openssh` 后端调用的 `ssh` 可执行文件（留空=用 PATH 里的 `ssh`） |
 | `proxy` | object | — | 跳板机：`{ host, port?, username?, password?, privateKeyPath? }`；语义是「在跳板机上连目标 host:port」，所以也能用来连跳板机上 docker 容器的 sshd（见「常见问题」里的 issue #56） |
 | `autoPush` | bool | `false` | 镜像内文件被编辑后自动推回远端（watcher，带防抖） |
@@ -308,6 +308,7 @@ Host devbox
 ```
 
   然后 `rw_connect(host="devbox", useSshConfig=true, backend="openssh")`。
+`native` 后端现在也能跑 `ProxyCommand` 和多跳 `ProxyJump`（`lib/proxycommand.js`），所以这条配置两个后端都可用；只有容器里必须依赖本机 `ssh` 的其它特性（GSSAPI、PKCS11 等）时才需要 `openssh`。
   为什么 `exec` 和文件操作**都会**进容器：`openssh` 后端把别名原样交给 `ssh`，
   自己**从不**生成 `ProxyCommand`（`lib/openssh.js` 明确不传，就是为了让 `~/.ssh/config` 说了算），
   而 `ssh -s <目标> sftp` 与 `ssh -- <目标> <命令>` 走的是同一条流 ⇒ 两者都穿过这个 ProxyCommand。
