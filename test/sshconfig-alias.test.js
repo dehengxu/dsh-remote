@@ -123,19 +123,48 @@ test('sshAliasTarget: a single ProxyJump hop is resolved through its own block',
   assert.deepEqual(target.warnings, [])
 })
 
-test('sshAliasTarget: a multi-hop chain is trimmed to the first hop LOUDLY', () => {
-  const text = ['Host t', '  HostName 10.9.9.9', '  ProxyJump a,b'].join(LF)
+test('sshAliasTarget: a multi-hop ProxyJump resolves EVERY hop through its own block', () => {
+  const text = [
+    'Host a', '  HostName 10.1.1.1', '  User ua',
+    'Host b', '  HostName 10.2.2.2', '  Port 2222', '  User ub',
+    'Host t', '  HostName 10.9.9.9', '  ProxyJump a,b',
+  ].join(LF)
   const target = sshAliasTarget('t', { text })
-  assert.equal(target.proxy.host, 'a')
-  assert.equal(target.warnings.length, 1)
-  assert.match(target.warnings[0], /2 hops/)
+  assert.equal(target.proxyChain.length, 2)
+  assert.equal(target.proxyChain[0].host, '10.1.1.1')
+  assert.equal(target.proxyChain[0].username, 'ua')
+  assert.equal(target.proxyChain[1].host, '10.2.2.2')
+  assert.equal(target.proxyChain[1].port, 2222)
+  assert.equal(target.proxyChain[1].username, 'ub')
+  assert.equal(target.proxy.host, '10.1.1.1', 'proxy stays the first hop for legacy callers')
+  assert.deepEqual(target.warnings, [])
 })
 
-test('sshAliasTarget: ProxyCommand is reported, never executed', () => {
+test('sshAliasTarget: ProxyCommand is carried verbatim for the backend to run', () => {
   const text = ['Host t', '  HostName 10.9.9.9', '  ProxyCommand nc -X connect %h %p'].join(LF)
   const target = sshAliasTarget('t', { text })
   assert.equal(target.proxy, undefined)
-  assert.match(target.warnings.join(' '), /ProxyCommand/)
+  assert.equal(target.proxyCommand, 'nc -X connect %h %p')
+  assert.equal(target.proxyChain.length, 0)
+  assert.deepEqual(target.warnings, [], 'both backends support ProxyCommand now')
+})
+
+test('sshAliasTarget: "ProxyCommand none" means no proxy at all', () => {
+  const text = ['Host t', '  HostName 10.9.9.9', '  ProxyCommand none'].join(LF)
+  assert.equal(sshAliasTarget('t', { text }).proxyCommand, '')
+})
+
+test('resolveMachineSshConfig: carries chain/command; an explicit machine proxy overrides both', () => {
+  const text = ['Host s4', '  HostName s4.example.com', '  ProxyCommand /bin/sh -c "exec nc %h %p"'].join(LF)
+  const auto = resolveMachineSshConfig({ host: 's4', useSshConfig: true, backend: 'native' }, { text })
+  assert.equal(auto.proxyCommand, '/bin/sh -c "exec nc %h %p"')
+  const explicit = resolveMachineSshConfig(
+    { host: 's4', useSshConfig: true, proxy: { host: 'bastion', port: 22, username: 'j' } },
+    { text },
+  )
+  assert.equal(explicit.proxyCommand, '')
+  assert.equal(explicit.proxyChain.length, 1)
+  assert.equal(explicit.proxyChain[0].host, 'bastion')
 })
 
 test('Include: relative paths resolve against ~/.ssh, globs expand, cycles stop', () => {

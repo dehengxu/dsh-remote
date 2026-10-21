@@ -73,12 +73,6 @@
     "@deepseek-ai/schemastery": "^3.18.1",
     "iconv-lite": "^0.6.3"
   },
-  "bundleDependencies": [
-    "ssh2",
-    "asn1",
-    "bcrypt-pbkdf",
-    "tweetnacl"
-  ],
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.8",
